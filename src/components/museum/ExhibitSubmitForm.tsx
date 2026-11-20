@@ -19,7 +19,13 @@ import { openPdfFile, PdfDocHandle, renderPdfPageCanvas, renderPdfPageJpeg } fro
 import { convertPptxToSlidesAndPdf } from '../../utils/pptxConverter';
 import { createAudioThumbnail, createVideoThumbnail } from '../../utils/mediaThumbnail';
 import { rotateAnnotations90 } from '../../utils/annotations';
-import { buildMuseumR2Key, resolvePageImageUrl, uploadBlobToR2 } from '../../services/r2Storage';
+import {
+  buildMuseumR2Key,
+  collectExhibitR2Keys,
+  deleteKeysFromR2,
+  resolvePageImageUrl,
+  uploadBlobToR2,
+} from '../../services/r2Storage';
 import { AnnotatorModal } from './AnnotatorModal';
 import { HbsBadge, HbsButton, HbsCard, HbsModal } from '../hbs/HbsKit';
 
@@ -311,6 +317,14 @@ export const ExhibitSubmitForm: React.FC<ExhibitSubmitFormProps> = ({
             aspect: s.w / s.h || 0.75,
             sourceLabel: s.quelle,
           });
+        } else if (s.r2Key) {
+          uploadedPages.push({
+            r2Key: s.r2Key,
+            width: s.w,
+            height: s.h,
+            aspect: s.w / s.h || 0.75,
+            sourceLabel: s.quelle,
+          });
         } else {
           const key = await uploadBlobToR2(s.blob, buildMuseumR2Key(museum.code, exhibitId, `seite_${i + 1}.jpg`), 'image/jpeg');
           uploadedPages.push({
@@ -402,6 +416,14 @@ export const ExhibitSubmitForm: React.FC<ExhibitSubmitFormProps> = ({
         kommentare: existing?.kommentare || [],
         rueck: existing?.rueck || [],
       };
+
+      if (!isDemo && existing) {
+        const keptKeys = new Set(collectExhibitR2Keys(result));
+        const obsoleteKeys = collectExhibitR2Keys(existing).filter((k) => !keptKeys.has(k));
+        if (obsoleteKeys.length > 0) {
+          await deleteKeysFromR2(obsoleteKeys);
+        }
+      }
 
       setProgress(100);
       removeStorage(draftKey);

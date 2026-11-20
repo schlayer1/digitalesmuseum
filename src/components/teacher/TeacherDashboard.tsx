@@ -118,6 +118,86 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [detailExhibitId, setDetailExhibitId] = useState<string | null>(null);
   const [detailPage, setDetailPage] = useState(0);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [deleteTargetMuseum, setDeleteTargetMuseum] = useState<MuseumAusstellung | null>(null);
+  const [deletingMuseum, setDeletingMuseum] = useState(false);
+
+  const handleConfirmDeleteMuseum = async () => {
+    if (!deleteTargetMuseum || deletingMuseum) return;
+    const target = deleteTargetMuseum;
+    setDeletingMuseum(true);
+    try {
+      const stats = await deleteMuseumAndFiles(target.code);
+      setMuseums((prev) => prev.filter((item) => item.code !== target.code));
+      setDeleteTargetMuseum(null);
+      if (selectedCode === target.code) {
+        onSelectMuseum('');
+      }
+      onToast(
+        `Ausstellung „${target.titel}“ gelöscht (${mehrzahl(stats.deletedExhibits, 'Exponat', 'Exponate')} & ${mehrzahl(
+          stats.deletedR2Files,
+          'Cloudflare-Datei',
+          'Cloudflare-Dateien'
+        )} entfernt).`
+      );
+    } catch (err: any) {
+      console.error('Fehler beim Löschen der Ausstellung:', err);
+      onToast(err?.message || 'Ausstellung konnte nicht gelöscht werden.');
+    } finally {
+      setDeletingMuseum(false);
+    }
+  };
+
+  const deleteConfirmModal = (
+    <HbsModal
+      isOpen={Boolean(deleteTargetMuseum)}
+      onClose={() => {
+        if (!deletingMuseum) setDeleteTargetMuseum(null);
+      }}
+      title="Ausstellung & Cloudflare-Dateien löschen"
+      footer={
+        <>
+          <HbsButton
+            variant="secondary"
+            disabled={deletingMuseum}
+            onClick={() => setDeleteTargetMuseum(null)}
+          >
+            Abbrechen
+          </HbsButton>
+          <HbsButton
+            variant="danger"
+            disabled={deletingMuseum}
+            onClick={handleConfirmDeleteMuseum}
+          >
+            <Trash2 className="w-4 h-4" />
+            {deletingMuseum ? 'Wird inkl. R2-Dateien gelöscht …' : 'Endgültig löschen'}
+          </HbsButton>
+        </>
+      }
+    >
+      {deleteTargetMuseum && (
+        <div className="space-y-3 text-sm text-hbs-slate">
+          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 space-y-1">
+            <p className="font-black text-base">
+              {deleteTargetMuseum.titel}
+              {deleteTargetMuseum.klasse ? ` (${deleteTargetMuseum.klasse})` : ''}
+            </p>
+            <p className="text-xs font-bold uppercase tracking-wider text-rose-700">
+              Code: {deleteTargetMuseum.code} · Erstellt von {deleteTargetMuseum.authorName}
+            </p>
+          </div>
+          <p>
+            Möchtest du diese Ausstellung wirklich <b>unwiderruflich löschen</b>?
+          </p>
+          <ul className="list-disc pl-5 space-y-1 text-xs text-hbs-slate-muted">
+            <li>Alle eingereichten Exponate, Kommentare, Fragen und Sterne-Rückmeldungen in Firestore werden entfernt.</li>
+            <li>
+              Sämtliche dazugehörigen Dateien in <b>Cloudflare R2</b> (Bilder, PDFs, umgewandelte PowerPoint-Folien, Audio- und Videodateien unter <code className="font-mono text-hbs-slate-dark">museum/{deleteTargetMuseum.code}/</code>) werden vollständig gelöscht.
+            </li>
+          </ul>
+        </div>
+      )}
+    </HbsModal>
+  );
 
   const refreshList = async () => {
     setLoadingList(true);
@@ -447,6 +527,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             >
               <Edit3 className="w-4 h-4" /> Bearbeiten
             </button>
+            <button
+              type="button"
+              onClick={() => setDeleteTargetMuseum(activeMuseum)}
+              className="h-11 px-4 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white text-sm font-bold inline-flex items-center gap-1.5 shadow-sm"
+            >
+              <Trash2 className="w-4 h-4" /> Ausstellung löschen
+            </button>
           </div>
         </HbsCard>
 
@@ -702,16 +789,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </HbsButton>
           <HbsButton
             variant="danger"
-            onClick={async () => {
-              if (!confirm('Die gesamte Ausstellung mit allen R2-Uploads unwiderruflich löschen?')) return;
-              await deleteMuseumAndFiles(activeMuseum.code);
-              onSelectMuseum('');
-              onToast('Ausstellung gelöscht.');
-            }}
+            onClick={() => setDeleteTargetMuseum(activeMuseum)}
           >
             <Trash2 className="w-4 h-4" /> Ausstellung löschen
           </HbsButton>
         </div>
+
+        {deleteConfirmModal}
 
         {/* QR Modal */}
         <HbsModal isOpen={showQrModal} onClose={() => setShowQrModal(false)} title={`Beitreten: ${activeMuseum.titel}`}>
@@ -1025,24 +1109,40 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             ) : filteredMuseums.length ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {filteredMuseums.map((m) => (
-                  <button
+                  <div
                     key={m.code}
-                    type="button"
-                    onClick={() => onSelectMuseum(m.code)}
-                    className="text-left rounded-xl border border-hbs-slate-border hover:border-hbs-blue bg-hbs-bg p-4 flex flex-col gap-1.5 transition-colors"
+                    className="group relative rounded-xl border border-hbs-slate-border hover:border-hbs-blue bg-hbs-bg p-4 flex items-start justify-between gap-2 transition-colors"
                   >
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {m.klasse && <HbsBadge label={m.klasse} variant="blue" />}
-                      <HbsBadge
-                        label={m.phase === 'aufbau' ? 'Aufbau' : m.phase === 'rundgang' ? 'Rundgang offen' : 'Geschlossen'}
-                        variant={m.phase === 'rundgang' ? 'teal' : m.phase === 'aufbau' ? 'amber' : 'neutral'}
-                      />
-                    </div>
-                    <b className="text-base font-bold text-hbs-slate-dark truncate w-full">{m.titel}</b>
-                    <span className="text-xs text-hbs-slate-muted">
-                      Code {m.code} · von {m.authorName} · {SAELE[m.saal]?.label || 'Klassisch'}
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectMuseum(m.code)}
+                      className="text-left flex-1 min-w-0 flex flex-col gap-1.5"
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {m.klasse && <HbsBadge label={m.klasse} variant="blue" />}
+                        <HbsBadge
+                          label={m.phase === 'aufbau' ? 'Aufbau' : m.phase === 'rundgang' ? 'Rundgang offen' : 'Geschlossen'}
+                          variant={m.phase === 'rundgang' ? 'teal' : m.phase === 'aufbau' ? 'amber' : 'neutral'}
+                        />
+                      </div>
+                      <b className="text-base font-bold text-hbs-slate-dark truncate w-full">{m.titel}</b>
+                      <span className="text-xs text-hbs-slate-muted">
+                        Code {m.code} · von {m.authorName} · {SAELE[m.saal]?.label || 'Klassisch'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTargetMuseum(m);
+                      }}
+                      aria-label={`Ausstellung ${m.titel} löschen`}
+                      title="Ausstellung inkl. Cloudflare-Dateien löschen"
+                      className="shrink-0 h-11 w-11 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 inline-flex items-center justify-center transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -1051,6 +1151,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </HbsCard>
         </div>
       </div>
+
+      {deleteConfirmModal}
     </div>
   );
 };

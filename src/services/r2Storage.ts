@@ -76,17 +76,50 @@ export async function uploadBlobToR2(
   return data.key;
 }
 
-export async function deleteKeysFromR2(keys: string[]): Promise<void> {
+export async function deleteKeysFromR2(keys: string[]): Promise<number> {
   const valid = keys.filter((k) => Boolean(k && k.startsWith(R2_PREFIX)));
-  if (!valid.length) return;
+  if (!valid.length) return 0;
   try {
-    await fetch('/api/r2-delete', {
+    const res = await fetch('/api/r2-delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keys: valid }),
     });
+    if (!res.ok) {
+      console.warn('R2 Delete HTTP-Status:', res.status);
+      return 0;
+    }
+    const data = await res.json().catch(() => ({}));
+    return typeof data?.deletedCount === 'number' ? data.deletedCount : valid.length;
   } catch (err) {
     console.warn('R2 Delete Warnung:', err);
+    return 0;
+  }
+}
+
+export async function deleteMuseumFolderFromR2(museumCode: string, explicitKeys: string[] = []): Promise<number> {
+  const safeCode = museumCode.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  if (!safeCode) return 0;
+  const validKeys = explicitKeys.filter((k) => Boolean(k && k.startsWith(R2_PREFIX)));
+  try {
+    const res = await fetch('/api/r2-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        museumCode: safeCode,
+        prefix: `${R2_PREFIX}${safeCode}/`,
+        keys: validKeys,
+      }),
+    });
+    if (!res.ok) {
+      console.warn('R2 Ordner-Delete HTTP-Status:', res.status);
+      return 0;
+    }
+    const data = await res.json().catch(() => ({}));
+    return typeof data?.deletedCount === 'number' ? data.deletedCount : validKeys.length;
+  } catch (err) {
+    console.warn('R2 Ordner-Delete Warnung:', err);
+    return 0;
   }
 }
 

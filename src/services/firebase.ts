@@ -29,7 +29,7 @@ import {
   Rueckmeldung,
   SaalStil,
 } from '../types/museum';
-import { deleteKeysFromR2, collectExhibitR2Keys } from './r2Storage';
+import { deleteKeysFromR2, deleteMuseumFolderFromR2, collectExhibitR2Keys } from './r2Storage';
 import { generateMuseumCode } from '../utils/museumHelpers';
 
 // Offizielle Firebase-Konfiguration des HBS App-Portals (terminkalender-7f269)
@@ -322,7 +322,9 @@ export async function updateMuseumFuehrung(code: string, fuehrung: FuehrungState
   });
 }
 
-export async function deleteMuseumAndFiles(code: string): Promise<void> {
+export async function deleteMuseumAndFiles(
+  code: string
+): Promise<{ deletedExhibits: number; deletedR2Files: number }> {
   const db = getDb();
   const exSnap = await getDocs(collection(db, MUSEUMS_COLLECTION, code, 'exponate'));
   const allKeys: string[] = [];
@@ -331,8 +333,12 @@ export async function deleteMuseumAndFiles(code: string): Promise<void> {
     allKeys.push(...collectExhibitR2Keys(ex));
     await deleteDoc(d.ref);
   }
-  await deleteKeysFromR2(allKeys);
+  const deletedR2Files = await deleteMuseumFolderFromR2(code, allKeys);
   await deleteDoc(doc(db, MUSEUMS_COLLECTION, code));
+  return {
+    deletedExhibits: exSnap.size,
+    deletedR2Files,
+  };
 }
 
 export async function saveExhibit(code: string, exhibit: Exponat): Promise<void> {

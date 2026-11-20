@@ -62,39 +62,40 @@ export const MUSEUMS_COLLECTION = 'hbs_museums';
 export const TEACHER_SESSION_KEY = 'hbs_museum_teacher_user_v1';
 
 export const SEED_TEACHERS: PortalUser[] = [
-  { id: 't-allerdt', name: 'Allerdt', pin: '6300', role: 'teacher', active: true },
-  { id: 't-dengler', name: 'Dengler', pin: '8991', role: 'teacher', active: true },
-  { id: 't-funk', name: 'Funk', pin: '1091', role: 'teacher', active: true },
-  { id: 't-graefe', name: 'Gräfe', pin: '6169', role: 'teacher', active: true },
-  { id: 't-gruchmann', name: 'Gruchmann', pin: '4444', role: 'teacher', active: true },
-  { id: 't-haase', name: 'Haase', pin: '8511', role: 'teacher', active: true },
-  { id: 't-halm', name: 'Halm', pin: '1350', role: 'teacher', active: true },
-  { id: 't-herold', name: 'Herold', pin: '2116', role: 'teacher', active: true },
-  { id: 't-illessy', name: 'Illessy', pin: '2479', role: 'teacher', active: true },
-  { id: 't-keim', name: 'Keim', pin: '9672', role: 'teacher', active: true },
-  { id: 't-keller', name: 'Keller', pin: '6079', role: 'teacher', active: true },
-  { id: 't-kleinfeld', name: 'Kleinfeld', pin: '5901', role: 'teacher', active: true },
-  { id: 't-koenig', name: 'König', pin: '2699', role: 'teacher', active: true },
-  { id: 't-koenitzern', name: 'Könitzer N', pin: '2535', role: 'teacher', active: true },
-  { id: 't-koenitzert', name: 'Könitzer T', pin: '7909', role: 'teacher', active: true },
-  { id: 't-mange', name: 'Mange', pin: '3518', role: 'teacher', active: true },
-  { id: 't-meier', name: 'Meier', pin: '8652', role: 'teacher', active: true },
-  { id: 't-nowak', name: 'Nowak', pin: '6652', role: 'teacher', active: true },
-  { id: 't-ottma', name: 'Ottma', pin: '7710', role: 'teacher', active: true },
-  { id: 't-petzold', name: 'Petzold', pin: '6244', role: 'teacher', active: true },
-  { id: 't-piel', name: 'Piel', pin: '8814', role: 'teacher', active: true },
-  { id: 't-schirmer', name: 'Schirmer', pin: '8386', role: 'teacher', active: true },
-  { id: 't-schmidt', name: 'Schmidt', pin: '6403', role: 'teacher', active: true },
-  { id: 't-schwappach', name: 'Schwappach', pin: '7673', role: 'teacher', active: true },
-  { id: 't-seifert', name: 'Seifert', pin: '3314', role: 'teacher', active: true },
-  { id: 't-surowy', name: 'Surowy', pin: '9330', role: 'teacher', active: true },
-  { id: 't-teubert', name: 'Teubert', pin: '5812', role: 'teacher', active: true },
-  { id: 't-thum', name: 'Thum', pin: '2012', role: 'teacher', active: true },
-  { id: 't-vogel', name: 'Vogel', pin: '1027', role: 'teacher', active: true },
-  { id: 't-voigt', name: 'Voigt', pin: '5067', role: 'teacher', active: true },
-  { id: 't-wagner', name: 'Wagner', pin: '7734', role: 'teacher', active: true },
-  { id: 't-weber', name: 'Weber', pin: '2540', role: 'teacher', active: true },
-  { id: 't-wesely', name: 'Wesely', pin: '7484', role: 'teacher', active: true },
+  { id: 't-allerdt', name: 'Allerdt', gender: 'm', pin: '6300', role: 'teacher', active: true },
+  { id: 't-dengler', name: 'Dengler', gender: 'm', pin: '8991', role: 'teacher', active: true },
+  { id: 't-funk', name: 'Funk', gender: 'f', pin: '1091', role: 'teacher', active: true },
+  { id: 't-graefe', name: 'Gräfe', gender: 'm', pin: '6169', role: 'teacher', active: true },
+  { id: 't-gruchmann', name: 'Gruchmann', gender: 'f', pin: '4444', role: 'teacher', active: true },
+  { id: 't-haack', name: 'Haack', gender: 'f', pin: '4782', role: 'teacher', active: true },
+  { id: 't-haase', name: 'Haase', gender: 'f', pin: '8511', role: 'teacher', active: true },
+  { id: 't-halm', name: 'Halm', gender: 'f', pin: '1350', role: 'teacher', active: true },
+  { id: 't-herold', name: 'Herold', gender: 'f', pin: '2116', role: 'teacher', active: true },
+  { id: 't-illessy', name: 'Illessy', gender: 'm', pin: '2479', role: 'teacher', active: true },
+  { id: 't-keim', name: 'Keim', gender: 'm', pin: '9672', role: 'teacher', active: true },
+  { id: 't-keller', name: 'Keller', gender: 'f', pin: '6079', role: 'teacher', active: true },
+  { id: 't-kleinfeld', name: 'Kleinfeld', gender: 'f', pin: '5901', role: 'teacher', active: true },
+  { id: 't-koenig', name: 'König', gender: 'm', pin: '2699', role: 'teacher', active: true },
+  { id: 't-koenitzern', name: 'Könitzer N', gender: 'f', pin: '2535', role: 'teacher', active: true },
+  { id: 't-koenitzert', name: 'Könitzer T', gender: 'm', pin: '7909', role: 'teacher', active: true },
+  { id: 't-mange', name: 'Mange', gender: 'f', pin: '3518', role: 'teacher', active: true },
+  { id: 't-meier', name: 'Meier', gender: 'f', pin: '8652', role: 'teacher', active: true },
+  { id: 't-nowak', name: 'Nowak', gender: 'm', pin: '6652', role: 'teacher', active: true },
+  { id: 't-ottma', name: 'Ottma', gender: 'm', pin: '7710', role: 'teacher', active: true },
+  { id: 't-petzold', name: 'Petzold', gender: 'f', pin: '6244', role: 'teacher', active: true },
+  { id: 't-piel', name: 'Piel', gender: 'f', pin: '8814', role: 'teacher', active: true },
+  { id: 't-schirmer', name: 'Schirmer', gender: 'f', pin: '8386', role: 'teacher', active: true },
+  { id: 't-schmidt', name: 'Schmidt', gender: 'f', pin: '6403', role: 'teacher', active: true },
+  { id: 't-schwappach', name: 'Schwappach', gender: 'm', pin: '7673', role: 'teacher', active: true },
+  { id: 't-seifert', name: 'Seifert', gender: 'm', pin: '3314', role: 'teacher', active: true },
+  { id: 't-surowy', name: 'Surowy', gender: 'f', pin: '9330', role: 'teacher', active: true },
+  { id: 't-teubert', name: 'Teubert', gender: 'm', pin: '5812', role: 'teacher', active: true },
+  { id: 't-thum', name: 'Thum', gender: 'f', pin: '2012', role: 'teacher', active: true },
+  { id: 't-vogel', name: 'Vogel', gender: 'f', pin: '1027', role: 'teacher', active: true },
+  { id: 't-voigt', name: 'Voigt', gender: 'f', pin: '5067', role: 'teacher', active: true },
+  { id: 't-wagner', name: 'Wagner', gender: 'f', pin: '7734', role: 'teacher', active: true },
+  { id: 't-weber', name: 'Weber', gender: 'm', pin: '2540', role: 'teacher', active: true },
+  { id: 't-wesely', name: 'Wesely', gender: 'm', pin: '7484', role: 'teacher', active: true },
 ];
 
 let dbInstance: Firestore | null = null;
@@ -128,11 +129,136 @@ function getStatistikDb(): Firestore | null {
   return statistikDbInstance;
 }
 
-// ---------- Lehrer-Authentifizierung (HBS App-Portal Sync) ----------
+// ---------- Lehrer-Authentifizierung (HBS App-Portal & Vertretungsstatistik Sync) ----------
+
+export function getCurrentSchoolYear(): string {
+  const now = new Date();
+  const y1 = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${String(y1).slice(-2)}/${String(y1 + 1).slice(-2)}`;
+}
+
+interface StatistikTeacherEntry {
+  id: string;
+  name: string;
+  pin: string;
+  gender: string;
+  active: boolean;
+}
+
+function parseStatistikYears(rawYearsJson: unknown, rawYearsObj: unknown): Record<string, any> {
+  if (typeof rawYearsJson === 'string' && rawYearsJson.trim()) {
+    try {
+      const parsed = JSON.parse(rawYearsJson);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      // ignore
+    }
+  }
+  if (rawYearsObj && typeof rawYearsObj === 'object') {
+    return rawYearsObj as Record<string, any>;
+  }
+  return {};
+}
+
+function isTeacherActiveInStatistikYear(teacher: { id?: string; active?: boolean }, yearData: any): boolean {
+  if (!yearData || typeof yearData !== 'object') return teacher.active !== false;
+  const tId = teacher.id ? String(teacher.id).trim() : '';
+  if (!tId) return teacher.active !== false;
+
+  if (yearData.staffStatus && yearData.staffStatus[tId] !== undefined) {
+    return Boolean(yearData.staffStatus[tId]);
+  }
+  if (yearData.records && typeof yearData.records === 'object') {
+    for (const monthKey of Object.keys(yearData.records)) {
+      const rec = yearData.records[monthKey]?.[tId];
+      if (rec && typeof rec === 'object' && Object.keys(rec).length > 0) return true;
+    }
+  }
+  if (Array.isArray(yearData.azv) && yearData.azv.some((entry: any) => entry?.tId === tId)) {
+    return true;
+  }
+  if (yearData.monthConfigs && typeof yearData.monthConfigs === 'object') {
+    for (const monthKey of Object.keys(yearData.monthConfigs)) {
+      if (yearData.monthConfigs[monthKey]?.[tId] !== undefined) return true;
+    }
+  }
+  const yearHasAnyData =
+    Object.keys(yearData.records || {}).length > 0 ||
+    Object.keys(yearData.monthConfigs || {}).length > 0 ||
+    (Array.isArray(yearData.azv) && yearData.azv.length > 0);
+  if (!yearHasAnyData) return teacher.active !== false;
+  return false;
+}
+
+function extractStatistikTeachers(
+  rawTeachers: any[],
+  docSchoolYear: unknown,
+  rawYearsJson: unknown,
+  rawYearsObj: unknown
+): StatistikTeacherEntry[] {
+  if (!Array.isArray(rawTeachers)) return [];
+  const years = parseStatistikYears(rawYearsJson, rawYearsObj);
+  const calcYear = getCurrentSchoolYear();
+  const docYearStr = typeof docSchoolYear === 'string' ? docSchoolYear.trim() : '';
+  const targetYear = years?.[calcYear] ? calcYear : docYearStr && years?.[docYearStr] ? docYearStr : calcYear;
+  const yearData = years?.[targetYear];
+
+  return rawTeachers.map((t: any) => ({
+    id: t?.id ? String(t.id).trim() : '',
+    name: t?.name ? String(t.name).trim() : '',
+    pin: t?.pin !== undefined && t?.pin !== null ? String(t.pin).trim() : '',
+    gender: t?.gender === 'f' || t?.gender === 'm' || t?.gender === 'd' ? t.gender : '',
+    active: isTeacherActiveInStatistikYear({ id: t?.id ? String(t.id).trim() : '', active: t?.active }, yearData),
+  }));
+}
+
+async function fetchStatistikTeachersFromCloud(): Promise<StatistikTeacherEntry[]> {
+  const sDb = getStatistikDb();
+  if (sDb) {
+    try {
+      const snap = await getDoc(doc(sDb, 'schools', 'HBS'));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (Array.isArray(data?.teachers)) {
+          return extractStatistikTeachers(data.teachers, data.schoolYear, data.yearsJson, data.years);
+        }
+      }
+    } catch (err) {
+      console.warn('Statistik Firestore SDK Lesefehler, nutze REST-Fallback:', err);
+    }
+  }
+
+  try {
+    const res = await fetch(
+      'https://firestore.googleapis.com/v1/projects/statistik-91f25/databases/(default)/documents/schools/HBS'
+    );
+    if (!res.ok) return [];
+    const docJson = await res.json();
+    const fields = docJson?.fields || {};
+    const values = fields?.teachers?.arrayValue?.values;
+    if (!Array.isArray(values)) return [];
+    const rawTeachers = values.map((v: any) => {
+      const f = v?.mapValue?.fields || {};
+      return {
+        id: f.id?.stringValue ?? '',
+        name: f.name?.stringValue ?? '',
+        pin: f.pin?.stringValue ?? '',
+        gender: f.gender?.stringValue ?? '',
+        active: f.active?.booleanValue !== undefined ? Boolean(f.active.booleanValue) : true,
+      };
+    });
+    return extractStatistikTeachers(rawTeachers, fields?.schoolYear?.stringValue, fields?.yearsJson?.stringValue, null);
+  } catch (err) {
+    console.warn('Statistik REST-Fallback Fehler:', err);
+    return [];
+  }
+}
 
 export async function loadPortalTeachers(): Promise<PortalUser[]> {
-  const byId = new Map<string, PortalUser>();
-  for (const t of SEED_TEACHERS) byId.set(t.name.toLowerCase(), t);
+  const byName = new Map<string, PortalUser>();
+  for (const t of SEED_TEACHERS) {
+    byName.set(t.name.toLowerCase(), { ...t });
+  }
 
   try {
     const portalDoc = await getDoc(doc(getDb(), PORTAL_COLLECTION, PORTAL_DATA_DOC));
@@ -140,15 +266,18 @@ export async function loadPortalTeachers(): Promise<PortalUser[]> {
       const data = portalDoc.data();
       if (Array.isArray(data?.users)) {
         for (const u of data.users as PortalUser[]) {
-          if (u?.name && u?.pin) {
-            byId.set(u.name.toLowerCase(), {
-              id: u.id || `t-${u.name.toLowerCase()}`,
-              name: u.name,
-              pin: String(u.pin),
+          const cleanName = (u?.name || '').trim();
+          if (cleanName && u?.pin && !cleanName.toLowerCase().includes('schulleitung') && cleanName.toLowerCase() !== 'nn') {
+            const key = cleanName.toLowerCase();
+            const prev = byName.get(key);
+            byName.set(key, {
+              id: u.id || prev?.id || `t-${key}`,
+              name: cleanName,
+              pin: String(u.pin).trim(),
               role: u.role === 'admin' ? 'admin' : 'teacher',
               active: u.active !== false,
-              gender: u.gender,
-              sourceTeacherId: u.sourceTeacherId,
+              gender: u.gender || prev?.gender || '',
+              sourceTeacherId: u.sourceTeacherId || prev?.sourceTeacherId,
             });
           }
         }
@@ -158,40 +287,51 @@ export async function loadPortalTeachers(): Promise<PortalUser[]> {
     console.warn('Konnte Portal-Lehrkräfte nicht aus Firestore laden:', err);
   }
 
-  const sDb = getStatistikDb();
-  if (sDb) {
-    try {
-      const snap = await getDocs(collection(sDb, 'teachers'));
-    snap.forEach((d) => {
-      const raw = d.data() as any;
-      if (raw?.name && raw?.pin && raw?.active !== false) {
-        const key = String(raw.name).trim().toLowerCase();
-        const prev = byId.get(key);
-        byId.set(key, {
-          id: prev?.id || `stat-${d.id}`,
-          name: String(raw.name).trim(),
-          pin: String(raw.pin).trim(),
-          role: prev?.role || 'teacher',
-          active: true,
-          gender: raw.gender || prev?.gender,
-          sourceTeacherId: d.id,
-        });
-      }
-    });
-    } catch {
-      // Fallback to portal_data + SEED_TEACHERS
+  const statList = await fetchStatistikTeachersFromCloud();
+  for (const st of statList) {
+    const cleanName = (st.name || '').trim();
+    if (!cleanName || cleanName.toLowerCase().includes('schulleitung') || cleanName.toLowerCase() === 'nn') continue;
+    const key = cleanName.toLowerCase();
+    const prev = byName.get(key);
+    if (prev) {
+      byName.set(key, {
+        ...prev,
+        name: cleanName,
+        pin: /^\d{4,}$/.test(st.pin) ? st.pin : prev.pin,
+        gender: st.gender || prev.gender || '',
+        active: st.active,
+        sourceTeacherId: st.id || prev.sourceTeacherId,
+      });
+    } else if (st.active && /^\d{4,}$/.test(st.pin)) {
+      byName.set(key, {
+        id: st.id ? `t-${st.id}` : `t-${key}`,
+        name: cleanName,
+        pin: st.pin,
+        role: 'teacher',
+        active: true,
+        gender: st.gender || '',
+        sourceTeacherId: st.id || undefined,
+      });
     }
   }
 
-  return Array.from(byId.values())
-    .filter((u) => u.active !== false)
+  return Array.from(byName.values())
+    .filter((u) => u.active !== false && u.name.toLowerCase() !== 'nn')
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
 export function getSavedTeacherUser(): PortalUser | null {
   try {
     const raw = localStorage.getItem(TEACHER_SESSION_KEY);
-    return raw ? (JSON.parse(raw) as PortalUser) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PortalUser;
+    if (parsed && !parsed.gender && parsed.name) {
+      const match = SEED_TEACHERS.find((t) => t.name.toLowerCase() === parsed.name.toLowerCase());
+      if (match?.gender) {
+        parsed.gender = match.gender;
+      }
+    }
+    return parsed;
   } catch {
     return null;
   }

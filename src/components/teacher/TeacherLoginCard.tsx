@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { KeyRound, Lock, UserCheck } from 'lucide-react';
-import { PortalUser } from '../../types/museum';
-import { loadPortalTeachers, MASTER_ADMIN_PIN, SEED_TEACHERS } from '../../services/firebase';
+import { formatTeacherName, PortalUser } from '../../types/museum';
+import { getCurrentSchoolYear, loadPortalTeachers, MASTER_ADMIN_PIN, SEED_TEACHERS } from '../../services/firebase';
 import { HbsButton, HbsCard } from '../hbs/HbsKit';
+
+const LAST_TEACHER_ID_KEY = 'hbs_museum_last_teacher_id_v1';
 
 interface TeacherLoginCardProps {
   onLoginSuccess: (user: PortalUser) => void;
@@ -11,17 +13,37 @@ interface TeacherLoginCardProps {
 
 export const TeacherLoginCard: React.FC<TeacherLoginCardProps> = ({ onLoginSuccess, onCancel }) => {
   const [teachers, setTeachers] = useState<PortalUser[]>(SEED_TEACHERS);
-  const [selectedId, setSelectedId] = useState(SEED_TEACHERS[0]?.id || '');
+  const [selectedId, setSelectedId] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LAST_TEACHER_ID_KEY);
+      if (saved && SEED_TEACHERS.some((t) => t.id === saved)) return saved;
+    } catch {
+      // ignore
+    }
+    return SEED_TEACHERS[0]?.id || '';
+  });
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
 
   useEffect(() => {
     loadPortalTeachers()
       .then((list) => {
         if (list.length) {
           setTeachers(list);
-          setSelectedId((prev) => (list.some((t) => t.id === prev) ? prev : list[0].id));
+          setSelectedId((prev) => {
+            if (list.some((t) => t.id === prev)) return prev;
+            try {
+              const saved = localStorage.getItem(LAST_TEACHER_ID_KEY);
+              if (saved) {
+                const byId = list.find((t) => t.id === saved);
+                if (byId) return byId.id;
+              }
+            } catch {
+              // ignore
+            }
+            return list[0].id;
+          });
         }
       })
       .catch(() => {});
@@ -58,20 +80,30 @@ export const TeacherLoginCard: React.FC<TeacherLoginCardProps> = ({ onLoginSucce
       return;
     }
 
+    try {
+      localStorage.setItem(LAST_TEACHER_ID_KEY, chosen.id);
+    } catch {
+      // ignore
+    }
     onLoginSuccess(chosen);
   };
 
   return (
     <div className="w-full max-w-md mx-auto px-3 py-10">
       <HbsCard className="space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-hbs-blue-light text-hbs-blue flex items-center justify-center shrink-0">
-            <Lock className="w-5 h-5" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-hbs-blue-light text-hbs-blue flex items-center justify-center shrink-0">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-hbs-slate-dark">Kollegiums-Anmeldung</h2>
+              <p className="text-xs text-hbs-slate-muted">Melde dich mit deinem HBS-Appportal-Konto an.</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-black text-hbs-slate-dark">Kollegiums-Anmeldung</h2>
-            <p className="text-xs text-hbs-slate-muted">Melde dich mit deinem HBS-Appportal-Konto an.</p>
-          </div>
+          <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-hbs-blue-soft text-hbs-blue-dark border border-hbs-blue/20 shrink-0">
+            SJ {getCurrentSchoolYear()}
+          </span>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -84,12 +116,19 @@ export const TeacherLoginCard: React.FC<TeacherLoginCardProps> = ({ onLoginSucce
                 <UserCheck className="w-4 h-4 text-hbs-slate-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <select
                   value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedId(e.target.value);
+                    try {
+                      localStorage.setItem(LAST_TEACHER_ID_KEY, e.target.value);
+                    } catch {
+                      // ignore
+                    }
+                  }}
                   className="w-full h-11 pl-9 pr-3 rounded-xl border border-hbs-slate-border bg-white text-sm font-semibold text-hbs-slate-dark"
                 >
                   {teachers.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name}
+                      {formatTeacherName(t)}
                     </option>
                   ))}
                 </select>

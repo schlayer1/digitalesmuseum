@@ -120,15 +120,40 @@ export interface MuseumAusstellung {
   expiresAt: number;
 }
 
+export type TeacherGender = 'f' | 'm' | 'd' | '';
+
 export interface PortalUser {
   id: string;
   name: string;
   pin: string;
   role: 'teacher' | 'admin';
   active: boolean;
-  gender?: string;
+  gender?: TeacherGender | string;
   sourceTeacherId?: string;
   createdAt?: number;
+}
+
+export function formatTeacherName(
+  teacher?: { name?: string | null; gender?: TeacherGender | string | null } | null
+): string {
+  const rawName = (teacher?.name || '').trim();
+  if (!rawName) return '';
+  const lower = rawName.toLowerCase();
+  if (
+    lower.startsWith('frau ') ||
+    lower.startsWith('herr ') ||
+    lower.startsWith('fr. ') ||
+    lower.startsWith('hr. ') ||
+    lower === 'gast' ||
+    lower === 'nn' ||
+    lower.includes('schulleitung') ||
+    lower.includes('admin')
+  ) {
+    return rawName;
+  }
+  if (teacher?.gender === 'f') return `Frau ${rawName}`;
+  if (teacher?.gender === 'm') return `Herr ${rawName}`;
+  return rawName;
 }
 
 export interface HallSlot {

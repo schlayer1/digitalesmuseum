@@ -3,6 +3,7 @@ import { GraduationCap, Landmark, MonitorPlay, Sparkles, Upload } from 'lucide-r
 import {
   AnnotationItem,
   Exponat,
+  formatTeacherName,
   KommentarStelle,
   MuseumAusstellung,
   PortalUser,
@@ -14,6 +15,7 @@ import {
   deleteExhibitAndFiles,
   getMuseumByCode,
   getSavedTeacherUser,
+  loadPortalTeachers,
   removeExhibitComment,
   removeExhibitFeedback,
   saveExhibit,
@@ -89,6 +91,22 @@ export function App() {
   const [route, setRoute] = useState<RouteState>(parseRoute);
   const [deviceId] = useState<string>(() => getDeviceId());
   const [teacher, setTeacher] = useState<PortalUser | null>(() => getSavedTeacherUser());
+
+  useEffect(() => {
+    if (!teacher || teacher.id === 'master-admin') return;
+    loadPortalTeachers()
+      .then((list) => {
+        const match = list.find(
+          (u) => u.id === teacher.id || u.name.toLowerCase() === teacher.name.toLowerCase()
+        );
+        if (match && (match.gender !== teacher.gender || match.name !== teacher.name)) {
+          const updated = { ...teacher, gender: match.gender, name: match.name };
+          setTeacher(updated);
+          saveTeacherUser(updated);
+        }
+      })
+      .catch(() => {});
+  }, [teacher?.id]);
 
   const [codeInput, setCodeInput] = useState('');
   const [codeError, setCodeError] = useState('');
@@ -453,7 +471,7 @@ export function App() {
         badgeLabel={isDemoRoute ? 'Probeausstellung' : route.kind === 'teacher' || route.kind === 'beamer' ? 'Kollegium' : 'Schüler-Galerie'}
         userBadge={
           teacher ? (
-            <HbsBadge label={`Lehrkraft: ${teacher.name}`} variant="teal" />
+            <HbsBadge label={`Lehrkraft: ${formatTeacherName(teacher)}`} variant="teal" />
           ) : undefined
         }
         rightActions={

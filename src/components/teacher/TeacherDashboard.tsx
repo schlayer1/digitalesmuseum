@@ -17,6 +17,7 @@ import {
 import {
   AnnotationItem,
   Exponat,
+  formatTeacherName,
   KommentarStelle,
   MediaType,
   MuseumAusstellung,
@@ -260,7 +261,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         saal: newSaal,
         kriterien: newKrit.map((k) => k.trim()).filter(Boolean),
         authorId: teacher.id,
-        authorName: teacher.name,
+        authorName: formatTeacherName(teacher),
       });
       setNewTitle('');
       setNewKlasse('');
@@ -417,7 +418,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           id: exhibitId,
           museumCode: activeMuseum.code,
           deviceId: `teacher_${teacher.id}_${randomId(6)}`,
-          name: (row.von.trim() || teacher.name || 'Lehrkraft').slice(0, 20),
+          name: (row.von.trim() || formatTeacherName(teacher) || 'Lehrkraft').slice(0, 20),
           titel: (row.titel.trim() || 'Ohne Titel').slice(0, 80),
           text: '',
           mediaType: row.mediaType,
@@ -949,7 +950,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       <HbsCard className="bg-gradient-to-br from-hbs-blue to-hbs-blue-dark text-white border-0 flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1 max-w-2xl">
           <span className="text-xs font-extrabold uppercase tracking-wider text-hbs-blue-light">
-            Lehrkraft-Bereich · Angemeldet als {teacher.name}
+            Lehrkraft-Bereich · Angemeldet als {formatTeacherName(teacher)}
           </span>
           <h2 className="text-2xl sm:text-3xl font-black">Digitaler Museumsrundgang</h2>
           <p className="text-sm text-hbs-blue-light">

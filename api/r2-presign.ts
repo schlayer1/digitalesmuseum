@@ -6,7 +6,7 @@ import {
   isAllowedMuseumFile,
   MAX_MUSEUM_FILE_BYTES,
   sanitizeMuseumKey,
-} from './_r2';
+} from './_r2.js';
 
 export default async function handler(req: any, res: any) {
   if (!applyOriginProtection(req, res, 'POST,OPTIONS')) return;

@@ -1,5 +1,5 @@
 import { GetObjectCommand } from '@aws-sdk/client-s3';
-import { applyOriginProtection, getR2Client, sanitizeMuseumKey } from './_r2';
+import { applyOriginProtection, getR2Client, sanitizeMuseumKey } from './_r2.js';
 
 export default async function handler(req: any, res: any) {
   if (!applyOriginProtection(req, res, 'GET,OPTIONS')) return;

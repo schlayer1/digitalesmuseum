@@ -627,10 +627,27 @@ export interface Museum3DController {
 }
 
 export function createMuseum3D(can: HTMLCanvasElement, o: Museum3DOptions): Museum3DController {
-  const opt: WebGLContextAttributes = { antialias: true, alpha: false, powerPreference: 'high-performance', stencil: true };
-  const glCtx = (can.getContext('webgl2', opt) || can.getContext('webgl', opt)) as WebGLRenderingContext | null;
+  const opt: WebGLContextAttributes = {
+    antialias: true,
+    alpha: false,
+    powerPreference: 'high-performance',
+    stencil: true,
+    preserveDrawingBuffer: true,
+  };
+  const fallbackOpt: WebGLContextAttributes = {
+    alpha: false,
+    preserveDrawingBuffer: true,
+  };
+  const glCtx = (
+    can.getContext('webgl2', opt) ||
+    can.getContext('webgl', opt) ||
+    can.getContext('webgl2', fallbackOpt) ||
+    can.getContext('webgl', fallbackOpt)
+  ) as WebGLRenderingContext | null;
   if (!glCtx) throw new Error('WebGL nicht verfügbar');
+  if (glCtx.isContextLost()) throw new Error('WebGL-Kontext ist bereits verloren');
   const gl: WebGLRenderingContext = glCtx;
+  const isWebGL2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
 
   const st = STIL[o.saal] || STIL.klassisch;
   const ruhig = !!o.ruhig;
@@ -668,18 +685,26 @@ export function createMuseum3D(can: HTMLCanvasElement, o: Museum3DOptions): Muse
   const anisoMax = aniso ? Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)) : 0;
   const texMax = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
 
+  const isPowerOf2 = (v: number) => v > 0 && (v & (v - 1)) === 0;
+
   function textur(quelle: HTMLCanvasElement, wiederholen = false, t?: WebGLTexture | null): WebGLTexture {
     const tex = t || gl.createTexture()!;
+    const pot = isPowerOf2(quelle.width) && isPowerOf2(quelle.height);
+    const canRepeat = wiederholen && (isWebGL2 || pot);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, quelle);
-    const wrap = wiederholen ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+    const wrap = canRepeat ? gl.REPEAT : gl.CLAMP_TO_EDGE;
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    if (isWebGL2 || pot) {
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      if (aniso && anisoMax) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, anisoMax);
+    } else {
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    }
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    if (aniso && anisoMax) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, anisoMax);
     return tex;
   }
 
@@ -2276,8 +2301,30 @@ export function createMuseum3D(can: HTMLCanvasElement, o: Museum3DOptions): Muse
       window.removeEventListener('keydown', taste);
       window.removeEventListener('keyup', los);
       window.removeEventListener('blur', blur);
-      const l = gl.getExtension('WEBGL_lose_context');
-      if (l) l.loseContext();
+      statisch.forEach((g) => wegPuffer(g.p));
+      wegPuffer(boden);
+      aussen.forEach((g) => wegPuffer(g.p));
+      wegPuffer(tuerL);
+      wegPuffer(tuerR);
+      wegPuffer(HIMMEL);
+      wegPuffer(QUAD);
+      exp.forEach((e) => {
+        wegPuffer(e.rahmen);
+        if (e.tafelT) gl.deleteTexture(e.tafelT);
+      });
+      schilder.forEach((s) => gl.deleteTexture(s.t));
+      Object.values(T).forEach((tex) => gl.deleteTexture(tex));
+      if (fries) gl.deleteTexture(fries);
+      if (fahne) gl.deleteTexture(fahne);
+      if (emblem) gl.deleteTexture(emblem);
+      if (banner?.t) gl.deleteTexture(banner.t);
+      if (ausgang?.t) gl.deleteTexture(ausgang.t);
+      for (const c of cache.values()) {
+        if (c.t) gl.deleteTexture(c.t);
+      }
+      cache.clear();
+      for (const z of zettelState.liste) gl.deleteTexture(z.t);
+      gl.deleteProgram(prog);
     },
   };
 }

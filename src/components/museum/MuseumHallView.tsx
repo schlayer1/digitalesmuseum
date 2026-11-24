@@ -116,6 +116,18 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
   const isGuidedRef = useRef(isGuidedStudent);
   isGuidedRef.current = isGuidedStudent;
 
+  const [engineSeq, setEngineSeq] = useState(0);
+  const slotsRef = useRef(slots);
+  slotsRef.current = slots;
+  const showPortalRef = useRef(showPortal);
+  showPortalRef.current = showPortal;
+  const detailIdRef = useRef(detailId);
+  detailIdRef.current = detailId;
+  const zoomIdRef = useRef(zoomId);
+  zoomIdRef.current = zoomId;
+  const showZettelRef = useRef(showZettel);
+  showZettelRef.current = showZettel;
+
   const myExhibit = useMemo(() => exponate.find((e) => e.deviceId === deviceId) || null, [exponate, deviceId]);
   const openQuestionsCount = useMemo(
     () => (myExhibit ? myExhibit.kommentare.filter((k) => k.art === 'frage' && !k.antwort).length : 0),
@@ -251,6 +263,9 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
     else finish();
   }, [fadingOut, onFinishedWalk]);
 
+  const handleExitRef = useRef(handleExitMuseum);
+  handleExitRef.current = handleExitMuseum;
+
   // Initialize & clean up 3D WebGL engine
   useEffect(() => {
     if (!use3D || !canvasRef.current) return;
@@ -264,7 +279,7 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
         wandfarbe: (r) => getWallColor(museum.saal, r),
         ruhig: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
         gesperrt: () => isGuidedRef.current,
-        zettelPlatz: () => isBeamer && showZettel,
+        zettelPlatz: () => isBeamer && showZettelRef.current,
         logo: '/Siegel_bunt.png',
         ueber: (u, g, w, h, bw, bh) => {
           const anm = overlayMapRef.current.get(u);
@@ -272,9 +287,10 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
           const H = Math.round((1000 * bh) / bw);
           leinwandFormen(g, formen(anm, 1000, H), w / 1000, h / H);
         },
-        aktiv: () => !detailId && !zoomId && !showPortal,
+        aktiv: () => !detailIdRef.current && !zoomIdRef.current && !showPortalRef.current,
         beiTipp: (slotIdx) => {
-          const p = slots[slotIdx];
+          const curSlots = slotsRef.current;
+          const p = curSlots[slotIdx];
           if (!p || !isSlotWalkable(p)) return;
           if (slotIdx === curRef.current && p.e) {
             setDetailId(p.e.id);
@@ -285,15 +301,17 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
           ctrl.gehe(slotIdx, true);
         },
         beiStation: (slotIdx) => {
-          if (!isSlotWalkable(slots[slotIdx]) || slotIdx === curRef.current) return;
+          const curSlots = slotsRef.current;
+          if (!isSlotWalkable(curSlots[slotIdx]) || slotIdx === curRef.current) return;
           setCur(slotIdx);
         },
         beiAusgang: () => {
           if (isGuidedRef.current) return;
-          if (slots[curRef.current]?.art === 'ausgang') {
-            handleExitMuseum();
+          const curSlots = slotsRef.current;
+          if (curSlots[curRef.current]?.art === 'ausgang') {
+            handleExitRef.current();
           } else {
-            const ausIdx = slots.findIndex((s) => s.art === 'ausgang');
+            const ausIdx = curSlots.findIndex((s) => s.art === 'ausgang');
             if (ausIdx >= 0) {
               setCur(ausIdx);
               ctrl.gehe(ausIdx, true);
@@ -315,12 +333,19 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
     }
 
     w3Ref.current = ctrl;
+    setEngineSeq((n) => n + 1);
     const onResize = () => ctrl.groesse();
     window.addEventListener('resize', onResize);
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => ctrl.groesse());
+      ro.observe(can);
+    }
 
     return () => {
       disposed = true;
       window.removeEventListener('resize', onResize);
+      ro?.disconnect();
       ctrl.weg();
       w3Ref.current = null;
     };
@@ -331,12 +356,12 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
     const ctrl = w3Ref.current;
     if (!ctrl || !use3D) return;
     ctrl.bauen(slots);
-    if (showPortal) {
+    if (showPortalRef.current) {
       ctrl.draussen();
     } else {
       ctrl.gehe(begrenzt(curRef.current, 0, Math.max(0, slots.length - 1)), false);
     }
-  }, [use3D, slots]);
+  }, [use3D, slots, engineSeq]);
 
   useEffect(() => {
     const ctrl = w3Ref.current;
@@ -398,7 +423,7 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
           }))
         : []
     );
-  }, [use3D, museum.titel, museum.hinweis, exponate, slots, cur, pagesById, showHilfen, showZettel, isBeamer, deviceId]);
+  }, [use3D, museum.titel, museum.hinweis, exponate, slots, cur, pagesById, showHilfen, showZettel, isBeamer, deviceId, engineSeq]);
 
   // Keyboard navigation outside modals
   useEffect(() => {
@@ -479,7 +504,12 @@ export const MuseumHallView: React.FC<MuseumHallViewProps> = ({
       {/* 3D WebGL or 2D Gallery Scene */}
       {use3D ? (
         <div className="szene">
-          <canvas ref={canvasRef} className="welt" aria-label="Das Museum in 3D" />
+          <canvas
+            key={`${museum.saal}-${isBeamer ? 'b' : 's'}`}
+            ref={canvasRef}
+            className="welt"
+            aria-label="Das Museum in 3D"
+          />
           <div className="vignette" />
         </div>
       ) : (

@@ -91,6 +91,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 }) => {
   const [museums, setMuseums] = useState<MuseumAusstellung[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+  const [listError, setListError] = useState('');
   const [classFilter, setClassFilter] = useState('');
 
   // Create form
@@ -202,12 +203,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   const refreshList = async () => {
     setLoadingList(true);
+    setListError('');
     try {
       const list = await listMuseums();
       setMuseums(list);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      onToast('Ausstellungen konnten nicht geladen werden.');
+      const msg = err?.message || 'Ausstellungen konnten nicht geladen werden.';
+      setListError(msg);
+      onToast(msg);
     } finally {
       setLoadingList(false);
     }
@@ -263,6 +267,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         authorId: teacher.id,
         authorName: formatTeacherName(teacher),
       });
+      setMuseums((prev) => [created, ...prev.filter((item) => item.code !== created.code)]);
       setNewTitle('');
       setNewKlasse('');
       setNewHinweis('');
@@ -1107,6 +1112,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             {loadingList ? (
               <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
+            ) : listError ? (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-0.5 text-sm text-rose-900">
+                  <p className="font-bold">Datenbankverbindung fehlgeschlagen</p>
+                  <p className="text-xs text-rose-700">{listError}</p>
+                </div>
+                <HbsButton variant="secondary" onClick={refreshList} className="h-10 px-4 text-xs">
+                  Erneut laden
+                </HbsButton>
+              </div>
             ) : filteredMuseums.length ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {filteredMuseums.map((m) => (

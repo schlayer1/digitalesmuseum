@@ -2,8 +2,7 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
   getFirestore,
   initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
   collection,
   doc,
   getDoc,
@@ -98,15 +97,21 @@ export const SEED_TEACHERS: PortalUser[] = [
   { id: 't-wesely', name: 'Wesely', gender: 'm', pin: '7484', role: 'teacher', active: true },
 ];
 
+const FIRESTORE_REST_BASE = `https://firestore.googleapis.com/v1/projects/${DEFAULT_FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
+const SDK_OP_TIMEOUT_MS = 5000;
+
 let dbInstance: Firestore | null = null;
 let statistikDbInstance: Firestore | null = null;
 
-function createPersistentFirestore(firebaseApp: FirebaseApp): Firestore {
+function hasPrimaryApiKey(): boolean {
+  return Boolean(DEFAULT_FIREBASE_CONFIG.apiKey);
+}
+
+function createSafeFirestore(firebaseApp: FirebaseApp): Firestore {
   try {
     return initializeFirestore(firebaseApp, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
-      }),
+      localCache: memoryLocalCache(),
+      experimentalAutoDetectLongPolling: true,
     });
   } catch {
     return getFirestore(firebaseApp);
@@ -116,7 +121,7 @@ function createPersistentFirestore(firebaseApp: FirebaseApp): Firestore {
 export function getDb(): Firestore {
   if (dbInstance) return dbInstance;
   const app = getApps().some((a) => a.name === '[DEFAULT]') ? getApp() : initializeApp(DEFAULT_FIREBASE_CONFIG);
-  dbInstance = createPersistentFirestore(app);
+  dbInstance = createSafeFirestore(app);
   return dbInstance;
 }
 
@@ -127,6 +132,178 @@ function getStatistikDb(): Firestore | null {
   const app = existing || initializeApp(STATISTIK_FIREBASE_CONFIG, 'statistik');
   statistikDbInstance = getFirestore(app);
   return statistikDbInstance;
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer = 0;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(`${label}: Zeitüberschreitung nach ${Math.round(ms / 1000)}s`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
+function toFirestoreRestValue(val: unknown): any {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'boolean') return { booleanValue: val };
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val)) return { integerValue: '0' };
+    return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
+  }
+  if (typeof val === 'string') return { stringValue: val };
+  if (Array.isArray(val)) {
+    return {
+      arrayValue: {
+        values: val.map((item) => toFirestoreRestValue(item)),
+      },
+    };
+  }
+  if (typeof val === 'object') {
+    return {
+      mapValue: {
+        fields: toFirestoreRestFields(val as Record<string, unknown>),
+      },
+    };
+  }
+  return { stringValue: String(val) };
+}
+
+function toFirestoreRestFields(obj: Record<string, unknown>): Record<string, any> {
+  const fields: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      fields[k] = toFirestoreRestValue(v);
+    }
+  }
+  return fields;
+}
+
+function fromFirestoreRestValue(v: any): any {
+  if (!v || typeof v !== 'object') return undefined;
+  if ('nullValue' in v) return null;
+  if ('booleanValue' in v) return Boolean(v.booleanValue);
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return Number(v.doubleValue);
+  if ('stringValue' in v) return String(v.stringValue);
+  if ('timestampValue' in v) return String(v.timestampValue);
+  if ('arrayValue' in v) {
+    const vals = v.arrayValue?.values;
+    return Array.isArray(vals) ? vals.map((item: any) => fromFirestoreRestValue(item)) : [];
+  }
+  if ('mapValue' in v) {
+    return fromFirestoreRestFields(v.mapValue?.fields);
+  }
+  return undefined;
+}
+
+function fromFirestoreRestFields(fields?: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  if (!fields || typeof fields !== 'object') return out;
+  for (const [k, v] of Object.entries(fields)) {
+    const decoded = fromFirestoreRestValue(v);
+    if (decoded !== undefined) out[k] = decoded;
+  }
+  return out;
+}
+
+function buildRestUrl(docPath: string, params?: Record<string, string | string[]>): string {
+  const url = new URL(`${FIRESTORE_REST_BASE}/${docPath}`);
+  if (envApiKey) url.searchParams.set('key', envApiKey);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (Array.isArray(v)) {
+        for (const item of v) url.searchParams.append(k, item);
+      } else {
+        url.searchParams.set(k, v);
+      }
+    }
+  }
+  return url.toString();
+}
+
+async function parseRestError(res: Response, fallbackMsg: string): Promise<Error> {
+  try {
+    const json = await res.json();
+    const msg = json?.error?.message || json?.[0]?.error?.message;
+    if (msg) return new Error(`${fallbackMsg} (${msg})`);
+  } catch {
+    // ignore
+  }
+  return new Error(`${fallbackMsg} (HTTP ${res.status})`);
+}
+
+async function restGetDoc<T>(docPath: string): Promise<T | null> {
+  const res = await withTimeout(fetch(buildRestUrl(docPath)), 8000, 'Firestore REST GET');
+  if (res.status === 404) return null;
+  if (!res.ok) throw await parseRestError(res, 'Datenbankabruf fehlgeschlagen');
+  const json = await res.json();
+  return fromFirestoreRestFields(json?.fields) as T;
+}
+
+async function restListCollection<T>(collectionPath: string, pageSize = 200): Promise<T[]> {
+  const out: T[] = [];
+  let pageToken = '';
+  do {
+    const params: Record<string, string> = { pageSize: String(pageSize) };
+    if (pageToken) params.pageToken = pageToken;
+    const res = await withTimeout(fetch(buildRestUrl(collectionPath, params)), 8000, 'Firestore REST LIST');
+    if (res.status === 404) return [];
+    if (!res.ok) throw await parseRestError(res, 'Ausstellungen konnten nicht geladen werden');
+    const json = await res.json();
+    if (Array.isArray(json?.documents)) {
+      for (const d of json.documents) {
+        out.push(fromFirestoreRestFields(d?.fields) as T);
+      }
+    }
+    pageToken = typeof json?.nextPageToken === 'string' ? json.nextPageToken : '';
+  } while (pageToken);
+  return out;
+}
+
+async function restSetDoc(docPath: string, data: Record<string, unknown>, createOnly = false): Promise<void> {
+  const params: Record<string, string> = {};
+  if (createOnly) params['currentDocument.exists'] = 'false';
+  const res = await withTimeout(
+    fetch(buildRestUrl(docPath, params), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: toFirestoreRestFields(data) }),
+    }),
+    8000,
+    'Firestore REST WRITE'
+  );
+  if (!res.ok) throw await parseRestError(res, 'Speichern in Firestore fehlgeschlagen');
+}
+
+async function restPatchDoc(docPath: string, patch: Record<string, unknown>): Promise<void> {
+  const fieldPaths = Object.keys(patch).filter((k) => patch[k] !== undefined);
+  if (!fieldPaths.length) return;
+  const res = await withTimeout(
+    fetch(buildRestUrl(docPath, { 'updateMask.fieldPaths': fieldPaths }), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: toFirestoreRestFields(patch) }),
+    }),
+    8000,
+    'Firestore REST PATCH'
+  );
+  if (!res.ok) throw await parseRestError(res, 'Aktualisieren in Firestore fehlgeschlagen');
+}
+
+async function restDeleteDoc(docPath: string): Promise<void> {
+  const res = await withTimeout(
+    fetch(buildRestUrl(docPath), { method: 'DELETE' }),
+    8000,
+    'Firestore REST DELETE'
+  );
+  if (!res.ok && res.status !== 404) {
+    throw await parseRestError(res, 'Löschen in Firestore fehlgeschlagen');
+  }
 }
 
 // ---------- Lehrer-Authentifizierung (HBS App-Portal & Vertretungsstatistik Sync) ----------
@@ -261,25 +438,42 @@ export async function loadPortalTeachers(): Promise<PortalUser[]> {
   }
 
   try {
-    const portalDoc = await getDoc(doc(getDb(), PORTAL_COLLECTION, PORTAL_DATA_DOC));
-    if (portalDoc.exists()) {
-      const data = portalDoc.data();
-      if (Array.isArray(data?.users)) {
-        for (const u of data.users as PortalUser[]) {
-          const cleanName = (u?.name || '').trim();
-          if (cleanName && u?.pin && !cleanName.toLowerCase().includes('schulleitung') && cleanName.toLowerCase() !== 'nn') {
-            const key = cleanName.toLowerCase();
-            const prev = byName.get(key);
-            byName.set(key, {
-              id: u.id || prev?.id || `t-${key}`,
-              name: cleanName,
-              pin: String(u.pin).trim(),
-              role: u.role === 'admin' ? 'admin' : 'teacher',
-              active: u.active !== false,
-              gender: u.gender || prev?.gender || '',
-              sourceTeacherId: u.sourceTeacherId || prev?.sourceTeacherId,
-            });
-          }
+    let portalUsers: PortalUser[] | undefined;
+    if (hasPrimaryApiKey()) {
+      try {
+        const portalDoc = await withTimeout(
+          getDoc(doc(getDb(), PORTAL_COLLECTION, PORTAL_DATA_DOC)),
+          3500,
+          'loadPortalTeachers'
+        );
+        if (portalDoc.exists()) {
+          const data = portalDoc.data();
+          if (Array.isArray(data?.users)) portalUsers = data.users as PortalUser[];
+        }
+      } catch {
+        const restData = await restGetDoc<{ users?: PortalUser[] }>(`${PORTAL_COLLECTION}/${PORTAL_DATA_DOC}`);
+        if (Array.isArray(restData?.users)) portalUsers = restData.users;
+      }
+    } else {
+      const restData = await restGetDoc<{ users?: PortalUser[] }>(`${PORTAL_COLLECTION}/${PORTAL_DATA_DOC}`);
+      if (Array.isArray(restData?.users)) portalUsers = restData.users;
+    }
+
+    if (Array.isArray(portalUsers)) {
+      for (const u of portalUsers) {
+        const cleanName = (u?.name || '').trim();
+        if (cleanName && u?.pin && !cleanName.toLowerCase().includes('schulleitung') && cleanName.toLowerCase() !== 'nn') {
+          const key = cleanName.toLowerCase();
+          const prev = byName.get(key);
+          byName.set(key, {
+            id: u.id || prev?.id || `t-${key}`,
+            name: cleanName,
+            pin: String(u.pin).trim(),
+            role: u.role === 'admin' ? 'admin' : 'teacher',
+            active: u.active !== false,
+            gender: u.gender || prev?.gender || '',
+            sourceTeacherId: u.sourceTeacherId || prev?.sourceTeacherId,
+          });
         }
       }
     }
@@ -346,21 +540,41 @@ export function saveTeacherUser(user: PortalUser | null): void {
   }
 }
 
-// ---------- Ausstellungen & Exponate (Firestore) ----------
+// ---------- Ausstellungen & Exponate (Firestore + REST Fallback) ----------
 
 export async function listMuseums(): Promise<MuseumAusstellung[]> {
-  const q = query(collection(getDb(), MUSEUMS_COLLECTION), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  const out: MuseumAusstellung[] = [];
-  snap.forEach((d) => {
-    out.push(d.data() as MuseumAusstellung);
-  });
-  return out;
+  if (hasPrimaryApiKey()) {
+    try {
+      const q = query(collection(getDb(), MUSEUMS_COLLECTION), orderBy('createdAt', 'desc'));
+      const snap = await withTimeout(getDocs(q), SDK_OP_TIMEOUT_MS, 'listMuseums');
+      const out: MuseumAusstellung[] = [];
+      snap.forEach((d) => {
+        out.push(d.data() as MuseumAusstellung);
+      });
+      return out;
+    } catch (err) {
+      console.warn('Firestore SDK listMuseums fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+
+  const list = await restListCollection<MuseumAusstellung>(MUSEUMS_COLLECTION);
+  return list.sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
 }
 
 export async function getMuseumByCode(code: string): Promise<MuseumAusstellung | null> {
-  const snap = await getDoc(doc(getDb(), MUSEUMS_COLLECTION, code));
-  return snap.exists() ? (snap.data() as MuseumAusstellung) : null;
+  if (hasPrimaryApiKey()) {
+    try {
+      const snap = await withTimeout(
+        getDoc(doc(getDb(), MUSEUMS_COLLECTION, code)),
+        SDK_OP_TIMEOUT_MS,
+        'getMuseumByCode'
+      );
+      return snap.exists() ? (snap.data() as MuseumAusstellung) : null;
+    } catch (err) {
+      console.warn('Firestore SDK getMuseumByCode fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+  return restGetDoc<MuseumAusstellung>(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}`);
 }
 
 export function subscribeToMuseum(
@@ -368,16 +582,65 @@ export function subscribeToMuseum(
   onData: (museum: MuseumAusstellung | null) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  return onSnapshot(
-    doc(getDb(), MUSEUMS_COLLECTION, code),
-    (snap) => {
-      onData(snap.exists() ? (snap.data() as MuseumAusstellung) : null);
-    },
-    (err) => {
-      console.error('Firestore Museum Subscribe Error:', err);
+  let receivedFromSdk = false;
+  let pollTimer = 0;
+  let unsubSdk: Unsubscribe = () => {};
+
+  const startRestPolling = () => {
+    if (pollTimer) return;
+    const poll = () => {
+      restGetDoc<MuseumAusstellung>(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}`)
+        .then((m) => {
+          if (!receivedFromSdk) onData(m);
+        })
+        .catch((err) => {
+          if (!receivedFromSdk) onError?.(err);
+        });
+    };
+    poll();
+    pollTimer = window.setInterval(poll, 4000);
+  };
+
+  if (hasPrimaryApiKey()) {
+    try {
+      unsubSdk = onSnapshot(
+        doc(getDb(), MUSEUMS_COLLECTION, code),
+        (snap) => {
+          receivedFromSdk = true;
+          if (pollTimer) {
+            window.clearInterval(pollTimer);
+            pollTimer = 0;
+          }
+          onData(snap.exists() ? (snap.data() as MuseumAusstellung) : null);
+        },
+        (err) => {
+          console.error('Firestore Museum Subscribe Error:', err);
+          startRestPolling();
+          onError?.(err);
+        }
+      );
+      // Falls das WebChannel-Snapshot nach 2,5 s nicht eintrifft, sofort per REST laden
+      window.setTimeout(() => {
+        if (!receivedFromSdk) {
+          restGetDoc<MuseumAusstellung>(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}`)
+            .then((m) => {
+              if (!receivedFromSdk) onData(m);
+            })
+            .catch(() => {});
+        }
+      }, 2500);
+    } catch (err: any) {
+      startRestPolling();
       onError?.(err);
     }
-  );
+  } else {
+    startRestPolling();
+  }
+
+  return () => {
+    unsubSdk();
+    if (pollTimer) window.clearInterval(pollTimer);
+  };
 }
 
 export function subscribeToExhibits(
@@ -385,19 +648,64 @@ export function subscribeToExhibits(
   onData: (exhibits: Exponat[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  const q = query(collection(getDb(), MUSEUMS_COLLECTION, code, 'exponate'), orderBy('createdAt', 'asc'));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const list: Exponat[] = [];
-      snap.forEach((d) => list.push(d.data() as Exponat));
-      onData(list);
-    },
-    (err) => {
-      console.error('Firestore Exhibits Subscribe Error:', err);
+  let receivedFromSdk = false;
+  let pollTimer = 0;
+  let unsubSdk: Unsubscribe = () => {};
+
+  const loadViaRest = () => {
+    restListCollection<Exponat>(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}/exponate`)
+      .then((list) => {
+        if (!receivedFromSdk) {
+          onData(list.sort((a, b) => (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0)));
+        }
+      })
+      .catch((err) => {
+        if (!receivedFromSdk) onError?.(err);
+      });
+  };
+
+  const startRestPolling = () => {
+    if (pollTimer) return;
+    loadViaRest();
+    pollTimer = window.setInterval(loadViaRest, 4000);
+  };
+
+  if (hasPrimaryApiKey()) {
+    try {
+      const q = query(collection(getDb(), MUSEUMS_COLLECTION, code, 'exponate'), orderBy('createdAt', 'asc'));
+      unsubSdk = onSnapshot(
+        q,
+        (snap) => {
+          receivedFromSdk = true;
+          if (pollTimer) {
+            window.clearInterval(pollTimer);
+            pollTimer = 0;
+          }
+          const list: Exponat[] = [];
+          snap.forEach((d) => list.push(d.data() as Exponat));
+          onData(list);
+        },
+        (err) => {
+          console.error('Firestore Exhibits Subscribe Error:', err);
+          startRestPolling();
+          onError?.(err);
+        }
+      );
+      window.setTimeout(() => {
+        if (!receivedFromSdk) loadViaRest();
+      }, 2500);
+    } catch (err: any) {
+      startRestPolling();
       onError?.(err);
     }
-  );
+  } else {
+    startRestPolling();
+  }
+
+  return () => {
+    unsubSdk();
+    if (pollTimer) window.clearInterval(pollTimer);
+  };
 }
 
 export async function createMuseum(input: {
@@ -409,12 +717,15 @@ export async function createMuseum(input: {
   authorId: string;
   authorName: string;
 }): Promise<MuseumAusstellung> {
-  const db = getDb();
   let code = generateMuseumCode(6);
-  for (let i = 0; i < 6; i++) {
-    const existing = await getDoc(doc(db, MUSEUMS_COLLECTION, code));
-    if (!existing.exists()) break;
-    code = generateMuseumCode(6);
+  for (let i = 0; i < 4; i++) {
+    try {
+      const existing = await getMuseumByCode(code);
+      if (!existing) break;
+      code = generateMuseumCode(6);
+    } catch {
+      break;
+    }
   }
 
   const now = Date.now();
@@ -439,7 +750,16 @@ export async function createMuseum(input: {
     expiresAt: now + 30 * 24 * 60 * 60 * 1000, // 30 Tage
   };
 
-  await setDoc(doc(db, MUSEUMS_COLLECTION, code), docData);
+  if (hasPrimaryApiKey()) {
+    try {
+      await withTimeout(setDoc(doc(getDb(), MUSEUMS_COLLECTION, code), docData), SDK_OP_TIMEOUT_MS, 'createMuseum');
+      return docData;
+    } catch (err) {
+      console.warn('Firestore SDK createMuseum fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+
+  await restSetDoc(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}`, docData as unknown as Record<string, unknown>, true);
   return docData;
 }
 
@@ -447,96 +767,180 @@ export async function updateMuseumSettings(
   code: string,
   patch: Partial<Pick<MuseumAusstellung, 'titel' | 'klasse' | 'hinweis' | 'saal' | 'kriterien' | 'phase' | 'einreichen' | 'kommentare' | 'rueck' | 'fuehrung'>>
 ): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code);
-  await updateDoc(ref, {
+  const payload = {
     ...patch,
     updatedAt: Date.now(),
-  });
+  };
+  if (hasPrimaryApiKey()) {
+    try {
+      const ref = doc(getDb(), MUSEUMS_COLLECTION, code);
+      await withTimeout(updateDoc(ref, payload), SDK_OP_TIMEOUT_MS, 'updateMuseumSettings');
+      return;
+    } catch (err) {
+      console.warn('Firestore SDK updateMuseumSettings fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+  await restPatchDoc(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}`, payload);
 }
 
 export async function updateMuseumFuehrung(code: string, fuehrung: FuehrungState): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code);
-  await updateDoc(ref, {
+  const payload = {
     fuehrung,
     updatedAt: Date.now(),
-  });
+  };
+  if (hasPrimaryApiKey()) {
+    try {
+      const ref = doc(getDb(), MUSEUMS_COLLECTION, code);
+      await withTimeout(updateDoc(ref, payload), SDK_OP_TIMEOUT_MS, 'updateMuseumFuehrung');
+      return;
+    } catch (err) {
+      console.warn('Firestore SDK updateMuseumFuehrung fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+  await restPatchDoc(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}`, payload);
 }
 
 export async function deleteMuseumAndFiles(
   code: string
 ): Promise<{ deletedExhibits: number; deletedR2Files: number }> {
-  const db = getDb();
-  const exSnap = await getDocs(collection(db, MUSEUMS_COLLECTION, code, 'exponate'));
+  let exhibits: Exponat[] = [];
+  let usedSdk = false;
+
+  if (hasPrimaryApiKey()) {
+    try {
+      const db = getDb();
+      const exSnap = await withTimeout(
+        getDocs(collection(db, MUSEUMS_COLLECTION, code, 'exponate')),
+        SDK_OP_TIMEOUT_MS,
+        'deleteMuseumAndFiles.list'
+      );
+      usedSdk = true;
+      exhibits = exSnap.docs.map((d) => d.data() as Exponat);
+      for (const d of exSnap.docs) {
+        await withTimeout(deleteDoc(d.ref), SDK_OP_TIMEOUT_MS, 'deleteMuseumAndFiles.deleteExponat');
+      }
+    } catch (err) {
+      console.warn('Firestore SDK deleteMuseumAndFiles fehlgeschlagen, nutze REST-Fallback:', err);
+      usedSdk = false;
+    }
+  }
+
+  if (!usedSdk) {
+    exhibits = await restListCollection<Exponat>(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}/exponate`);
+    for (const ex of exhibits) {
+      await restDeleteDoc(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}/exponate/${encodeURIComponent(ex.id)}`);
+    }
+  }
+
   const allKeys: string[] = [];
-  for (const d of exSnap.docs) {
-    const ex = d.data() as Exponat;
+  for (const ex of exhibits) {
     allKeys.push(...collectExhibitR2Keys(ex));
-    await deleteDoc(d.ref);
   }
   const deletedR2Files = await deleteMuseumFolderFromR2(code, allKeys);
-  await deleteDoc(doc(db, MUSEUMS_COLLECTION, code));
+
+  if (usedSdk) {
+    try {
+      await withTimeout(deleteDoc(doc(getDb(), MUSEUMS_COLLECTION, code)), SDK_OP_TIMEOUT_MS, 'deleteMuseumAndFiles.deleteMuseum');
+    } catch {
+      await restDeleteDoc(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}`);
+    }
+  } else {
+    await restDeleteDoc(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}`);
+  }
+
   return {
-    deletedExhibits: exSnap.size,
+    deletedExhibits: exhibits.length,
     deletedR2Files,
   };
 }
 
 export async function saveExhibit(code: string, exhibit: Exponat): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibit.id);
-  await setDoc(ref, exhibit);
+  if (hasPrimaryApiKey()) {
+    try {
+      const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibit.id);
+      await withTimeout(setDoc(ref, exhibit), SDK_OP_TIMEOUT_MS, 'saveExhibit');
+      return;
+    } catch (err) {
+      console.warn('Firestore SDK saveExhibit fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+  await restSetDoc(
+    `${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}/exponate/${encodeURIComponent(exhibit.id)}`,
+    exhibit as unknown as Record<string, unknown>
+  );
 }
 
 export async function deleteExhibitAndFiles(code: string, exhibit: Exponat): Promise<void> {
   const keys = collectExhibitR2Keys(exhibit);
   await deleteKeysFromR2(keys);
-  await deleteDoc(doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibit.id));
+  if (hasPrimaryApiKey()) {
+    try {
+      await withTimeout(
+        deleteDoc(doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibit.id)),
+        SDK_OP_TIMEOUT_MS,
+        'deleteExhibitAndFiles'
+      );
+      return;
+    } catch (err) {
+      console.warn('Firestore SDK deleteExhibitAndFiles fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+  await restDeleteDoc(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}/exponate/${encodeURIComponent(exhibit.id)}`);
+}
+
+async function mutateExhibit(
+  code: string,
+  exhibitId: string,
+  buildPatch: (ex: Exponat) => Record<string, unknown>
+): Promise<void> {
+  if (hasPrimaryApiKey()) {
+    try {
+      const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
+      await withTimeout(
+        runTransaction(getDb(), async (tx) => {
+          const snap = await tx.get(ref);
+          if (!snap.exists()) return;
+          const patch = buildPatch(snap.data() as Exponat);
+          tx.update(ref, { ...patch, updatedAt: Date.now() });
+        }),
+        SDK_OP_TIMEOUT_MS,
+        'mutateExhibit'
+      );
+      return;
+    } catch (err) {
+      console.warn('Firestore SDK mutateExhibit fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+
+  const docPath = `${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}/exponate/${encodeURIComponent(exhibitId)}`;
+  const ex = await restGetDoc<Exponat>(docPath);
+  if (!ex) return;
+  const patch = buildPatch(ex);
+  await restPatchDoc(docPath, { ...patch, updatedAt: Date.now() });
 }
 
 export async function toggleExhibitLike(code: string, exhibitId: string, deviceId: string): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
-  await runTransaction(getDb(), async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) return;
-    const ex = snap.data() as Exponat;
+  await mutateExhibit(code, exhibitId, (ex) => {
     const likedBy = Array.isArray(ex.likedBy) ? [...ex.likedBy] : [];
     const idx = likedBy.indexOf(deviceId);
     if (idx >= 0) likedBy.splice(idx, 1);
     else likedBy.push(deviceId);
-    tx.update(ref, {
-      likedBy,
-      likesCount: likedBy.length,
-      updatedAt: Date.now(),
-    });
+    return { likedBy, likesCount: likedBy.length };
   });
 }
 
 export async function addExhibitComment(code: string, exhibitId: string, comment: Kommentar): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
-  await runTransaction(getDb(), async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) return;
-    const ex = snap.data() as Exponat;
+  await mutateExhibit(code, exhibitId, (ex) => {
     const kommentare = Array.isArray(ex.kommentare) ? [...ex.kommentare] : [];
     kommentare.push(comment);
-    tx.update(ref, {
-      kommentare: kommentare.slice(-300),
-      updatedAt: Date.now(),
-    });
+    return { kommentare: kommentare.slice(-300) };
   });
 }
 
 export async function removeExhibitComment(code: string, exhibitId: string, commentId: string): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
-  await runTransaction(getDb(), async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) return;
-    const ex = snap.data() as Exponat;
-    const kommentare = (ex.kommentare || []).filter((c) => c.id !== commentId);
-    tx.update(ref, {
-      kommentare,
-      updatedAt: Date.now(),
-    });
-  });
+  await mutateExhibit(code, exhibitId, (ex) => ({
+    kommentare: (ex.kommentare || []).filter((c) => c.id !== commentId),
+  }));
 }
 
 export async function answerExhibitQuestion(
@@ -545,53 +949,30 @@ export async function answerExhibitQuestion(
   commentId: string,
   answerText: string
 ): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
-  await runTransaction(getDb(), async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) return;
-    const ex = snap.data() as Exponat;
-    const kommentare = (ex.kommentare || []).map((c) =>
+  await mutateExhibit(code, exhibitId, (ex) => ({
+    kommentare: (ex.kommentare || []).map((c) =>
       c.id === commentId
         ? {
             ...c,
             antwort: answerText.trim() ? { text: answerText.trim().slice(0, 300), zeit: Math.floor(Date.now() / 1000) } : null,
           }
         : c
-    );
-    tx.update(ref, {
-      kommentare,
-      updatedAt: Date.now(),
-    });
-  });
+    ),
+  }));
 }
 
 export async function upsertExhibitFeedback(code: string, exhibitId: string, feedback: Rueckmeldung): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
-  await runTransaction(getDb(), async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) return;
-    const ex = snap.data() as Exponat;
+  await mutateExhibit(code, exhibitId, (ex) => {
     const rueck = (ex.rueck || []).filter((r) => r.deviceId !== feedback.deviceId);
     rueck.push(feedback);
-    tx.update(ref, {
-      rueck: rueck.slice(-300),
-      updatedAt: Date.now(),
-    });
+    return { rueck: rueck.slice(-300) };
   });
 }
 
 export async function removeExhibitFeedback(code: string, exhibitId: string, feedbackId: string): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
-  await runTransaction(getDb(), async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists()) return;
-    const ex = snap.data() as Exponat;
-    const rueck = (ex.rueck || []).filter((r) => r.id !== feedbackId);
-    tx.update(ref, {
-      rueck,
-      updatedAt: Date.now(),
-    });
-  });
+  await mutateExhibit(code, exhibitId, (ex) => ({
+    rueck: (ex.rueck || []).filter((r) => r.id !== feedbackId),
+  }));
 }
 
 export async function updateExhibitAnnotations(
@@ -599,11 +980,17 @@ export async function updateExhibitAnnotations(
   exhibitId: string,
   anm: Record<string, AnnotationItem[]>
 ): Promise<void> {
-  const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
-  await updateDoc(ref, {
-    anm,
-    updatedAt: Date.now(),
-  });
+  const payload = { anm, updatedAt: Date.now() };
+  if (hasPrimaryApiKey()) {
+    try {
+      const ref = doc(getDb(), MUSEUMS_COLLECTION, code, 'exponate', exhibitId);
+      await withTimeout(updateDoc(ref, payload), SDK_OP_TIMEOUT_MS, 'updateExhibitAnnotations');
+      return;
+    } catch (err) {
+      console.warn('Firestore SDK updateExhibitAnnotations fehlgeschlagen, nutze REST-Fallback:', err);
+    }
+  }
+  await restPatchDoc(`${MUSEUMS_COLLECTION}/${encodeURIComponent(code)}/exponate/${encodeURIComponent(exhibitId)}`, payload);
 }
 
 export async function setMuseumPhase(code: string, phase: MuseumPhase): Promise<void> {
